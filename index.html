@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ゲッチャレ練習ツール</title>
+  <style>
+    body { font-family: sans-serif; text-align: center; background: #f0f4f8; padding: 20px; }
+    .card-container { display: flex; flex-direction: column; align-items: center; gap: 15px; margin: 20px 0; }
+    .row { display: flex; justify-content: center; gap: 10px; }
+    .card { width: 90px; height: 130px; border-radius: 8px; border: 2px solid #ccc; background: #fff;
+            display: flex; align-items: center; justify-content: center; font-weight: bold; cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: transform 0.2s; }
+    .card:hover { transform: scale(1.05); }
+    .card.back { background: #2c3e50; color: #fff; }
+    .target { border: 3px solid #f1c40f; background: #fffde7; }
+    button { padding: 10px 20px; font-size: 16px; border: none; border-radius: 5px; background: #3498db; color: #fff; cursor: pointer; }
+    #message { font-size: 18px; font-weight: bold; margin-top: 15px; min-height: 27px; }
+  </style>
+</head>
+<body>
+
+  <h2>ゲッチャレ練習ツール</h2>
+  <p id="instruction">当たり（⭐レア）の位置を確認して「シャッフル」を押してね！</p>
+
+  <div class="card-container" id="board"></div>
+
+  <button id="action-btn" onclick="handleAction()">シャッフル！</button>
+  <div id="message"></div>
+
+<script>
+  const totalCards = 5;
+  let targetIndex = 4; // 初期位置：右下（5枚目）
+  let isShuffled = false;
+  let cardsData = [];
+
+  function initBoard() {
+    isShuffled = false;
+    document.getElementById('action-btn').style.display = 'inline-block';
+    document.getElementById('action-btn').innerText = 'シャッフル！';
+    document.getElementById('message').innerText = '';
+    document.getElementById('instruction').innerText = '当たり（⭐レア）の位置を確認して「シャッフル」を押してね！';
+    
+    cardsData = Array(totalCards).fill('ハズレ');
+    cardsData[targetIndex] = '⭐レア';
+    renderCards(false);
+  }
+
+  function renderCards(isBack) {
+    const board = document.getElementById('board');
+    board.innerHTML = '';
+
+    const row1 = document.createElement('div');
+    row1.className = 'row';
+    const row2 = document.createElement('div');
+    row2.className = 'row';
+
+    for (let i = 0; i < totalCards; i++) {
+      const card = document.createElement('div');
+      card.className = 'card';
+      
+      if (isBack) {
+        card.classList.add('back');
+        card.innerText = '？';
+        card.onclick = () => selectCard(i);
+      } else {
+        card.innerText = cardsData[i];
+        if (cardsData[i] === '⭐レア') card.classList.add('target');
+      }
+
+      if (i < 3) row1.appendChild(card);
+      else row2.appendChild(card);
+    }
+
+    board.appendChild(row1);
+    board.appendChild(row2);
+  }
+
+  function handleAction() {
+    if (!isShuffled) {
+      // シャッフル（完全にランダムに並び替え）
+      for (let i = cardsData.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [cardsData[i], cardsData[j]] = [cardsData[j], cardsData[i]];
+      }
+      isShuffled = true;
+      renderCards(true);
+      document.getElementById('action-btn').style.display = 'none';
+      document.getElementById('instruction').innerText = '1枚選んでタップ！';
+    }
+  }
+
+  function selectCard(selectedIndex) {
+    renderCards(false);
+    const msg = document.getElementById('message');
+    if (cardsData[selectedIndex] === '⭐レア') {
+      msg.innerText = '🎉 おめでとう！当たりを引き当てたよ！';
+      msg.style.color = 'green';
+    } else {
+      msg.innerText = '😭 残念！ハズレ…！';
+      msg.style.color = 'red';
+    }
+    document.getElementById('action-btn').style.display = 'inline-block';
+    document.getElementById('action-btn').innerText = 'もう一度あそぶ';
+    document.getElementById('action-btn').onclick = initBoard;
+  }
+
+  initBoard();
+</script>
+</body>
+</html>
