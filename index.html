@@ -5,17 +5,48 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ゲッチャレ練習ツール</title>
   <style>
-    body { font-family: sans-serif; text-align: center; background: #f0f4f8; padding: 20px; }
-    .card-container { display: flex; flex-direction: column; align-items: center; gap: 15px; margin: 20px 0; }
-    .row { display: flex; justify-content: center; gap: 10px; }
-    .card { width: 90px; height: 130px; border-radius: 8px; border: 2px solid #ccc; background: #fff;
-            display: flex; align-items: center; justify-content: center; font-weight: bold; cursor: pointer;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: transform 0.2s; }
-    .card:hover { transform: scale(1.05); }
-    .card.back { background: #2c3e50; color: #fff; }
-    .target { border: 3px solid #f1c40f; background: #fffde7; }
-    button { padding: 10px 20px; font-size: 16px; border: none; border-radius: 5px; background: #3498db; color: #fff; cursor: pointer; }
-    #message { font-size: 18px; font-weight: bold; margin-top: 15px; min-height: 27px; }
+    body { font-family: sans-serif; text-align: center; background: #1e272e; color: #fff; padding: 20px; margin: 0; overflow-x: hidden; }
+    h2 { margin-bottom: 5px; color: #f1c40f; text-shadow: 0 2px 4px rgba(0,0,0,0.5); }
+    #instruction { font-size: 14px; color: #dcdde1; margin-bottom: 20px; }
+    
+    .card-container { display: flex; flex-direction: column; align-items: center; gap: 15px; margin: 20px 0; perspective: 1000px; }
+    .row { display: flex; justify-content: center; gap: 12px; }
+
+    /* 3Dカードスタイル */
+    .card-wrapper { width: 90px; height: 130px; perspective: 1000px; cursor: pointer; }
+    .card { width: 100%; height: 100%; position: relative; transform-style: preserve-3d; transition: transform 0.6s cubic-bezier(0.4, 0.2, 0.2, 1); }
+    .card.flipped { transform: rotateY(180deg); }
+    .card.shuffling { animation: shuffleAnim 0.5s ease-in-out infinite alternate; }
+
+    .card-face { position: absolute; width: 100%; height: 100%; backface-visibility: hidden; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: bold; box-shadow: 0 4px 10px rgba(0,0,0,0.4); border: 2px solid #dcdde1; }
+    
+    /* 表面（答え） */
+    .card-front { background: #f5f6fa; color: #2f3640; font-size: 16px; }
+    .card-front.target { border: 3px solid #f1c40f; background: #fffed0; box-shadow: 0 0 15px #f1c40f; }
+    
+    /* 裏面（？状態） */
+    .card-back { background: linear-gradient(135deg, #0984e3, #6c5ce7); color: #fff; font-size: 24px; transform: rotateY(180deg); border: 2px solid #74b9ff; }
+
+    /* 当たり演出 */
+    @keyframes winGlow {
+      0% { transform: scale(1); box-shadow: 0 0 10px #f1c40f; }
+      50% { transform: scale(1.1); box-shadow: 0 0 25px #f1c40f; }
+      100% { transform: scale(1); box-shadow: 0 0 10px #f1c40f; }
+    }
+    .win-card { animation: winGlow 1s infinite alternate; }
+
+    @keyframes shuffleAnim {
+      0% { transform: translateY(0) rotate(0deg); }
+      100% { transform: translateY(-10px) rotate(5deg); }
+    }
+
+    button { padding: 12px 28px; font-size: 16px; font-weight: bold; border: none; border-radius: 25px; background: linear-gradient(45deg, #e1b12c, #fbc531); color: #2f3640; cursor: pointer; box-shadow: 0 4px 15px rgba(241, 196, 15, 0.4); transition: transform 0.1s; }
+    button:active { transform: scale(0.95); }
+    #message { font-size: 20px; font-weight: bold; margin-top: 20px; min-height: 30px; }
+    
+    /* 紙吹雪エフェクト用 */
+    .confetti { position: absolute; width: 10px; height: 10px; background: #f1c40f; animation: fall 2s linear infinite; top: -10px; }
+    @keyframes fall { to { transform: translateY(100vh) rotate(360deg); } }
   </style>
 </head>
 <body>
@@ -25,19 +56,22 @@
 
   <div class="card-container" id="board"></div>
 
-  <button id="action-btn" onclick="handleAction()">シャッフル！</button>
+  <button id="action-btn" onclick="handleShuffle()">シャッフル！</button>
   <div id="message"></div>
 
 <script>
   const totalCards = 5;
-  let targetIndex = 4; // 初期位置：右下（5枚目）
+  let targetIndex = 4; // 右下
   let isShuffled = false;
   let cardsData = [];
+  let isAnimating = false;
 
   function initBoard() {
     isShuffled = false;
+    isAnimating = false;
     document.getElementById('action-btn').style.display = 'inline-block';
     document.getElementById('action-btn').innerText = 'シャッフル！';
+    document.getElementById('action-btn').onclick = handleShuffle;
     document.getElementById('message').innerText = '';
     document.getElementById('instruction').innerText = '当たり（⭐レア）の位置を確認して「シャッフル」を押してね！';
     
@@ -56,53 +90,112 @@
     row2.className = 'row';
 
     for (let i = 0; i < totalCards; i++) {
-      const card = document.createElement('div');
-      card.className = 'card';
+      const wrapper = document.createElement('div');
+      wrapper.className = 'card-wrapper';
       
+      const card = document.createElement('div');
+      card.className = 'card' + (isBack ? ' flipped' : '');
+      card.id = `card-${i}`;
+
+      const front = document.createElement('div');
+      front.className = 'card-face card-front' + (cardsData[i] === '⭐レア' ? ' target' : '');
+      front.innerText = cardsData[i];
+
+      const back = document.createElement('div');
+      back.className = 'card-face card-back';
+      back.innerText = '？';
+
+      card.appendChild(front);
+      card.appendChild(back);
+      wrapper.appendChild(card);
+
       if (isBack) {
-        card.classList.add('back');
-        card.innerText = '？';
-        card.onclick = () => selectCard(i);
-      } else {
-        card.innerText = cardsData[i];
-        if (cardsData[i] === '⭐レア') card.classList.add('target');
+        wrapper.onclick = () => selectCard(i);
       }
 
-      if (i < 3) row1.appendChild(card);
-      else row2.appendChild(card);
+      if (i < 3) row1.appendChild(wrapper);
+      else row2.appendChild(wrapper);
     }
 
     board.appendChild(row1);
     board.appendChild(row2);
   }
 
-  function handleAction() {
-    if (!isShuffled) {
-      // シャッフル（完全にランダムに並び替え）
+  function handleShuffle() {
+    if (isAnimating) return;
+    isAnimating = true;
+
+    document.getElementById('instruction').innerText = 'シャッフル中…！';
+    document.getElementById('action-btn').style.display = 'none';
+
+    // 裏返すアニメーション
+    for (let i = 0; i < totalCards; i++) {
+      document.getElementById(`card-${i}`).classList.add('flipped');
+    }
+
+    // シャッフル動作（シャッフルアニメーションを挟む）
+    setTimeout(() => {
+      for (let i = 0; i < totalCards; i++) {
+        document.getElementById(`card-${i}`).classList.add('shuffling');
+      }
+
+      // 実際に配列をシャッフル
       for (let i = cardsData.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [cardsData[i], cardsData[j]] = [cardsData[j], cardsData[i]];
       }
-      isShuffled = true;
-      renderCards(true);
-      document.getElementById('action-btn').style.display = 'none';
-      document.getElementById('instruction').innerText = '1枚選んでタップ！';
-    }
+
+      setTimeout(() => {
+        isShuffled = true;
+        isAnimating = false;
+        renderCards(true);
+        document.getElementById('instruction').innerText = '1枚選んでタップ！';
+      }, 1000);
+
+    }, 600);
   }
 
   function selectCard(selectedIndex) {
-    renderCards(false);
-    const msg = document.getElementById('message');
-    if (cardsData[selectedIndex] === '⭐レア') {
-      msg.innerText = '🎉 おめでとう！当たりを引き当てたよ！';
-      msg.style.color = 'green';
-    } else {
-      msg.innerText = '😭 残念！ハズレ…！';
-      msg.style.color = 'red';
+    if (isAnimating) return;
+    isAnimating = true;
+
+    const selectedCard = document.getElementById(`card-${selectedIndex}`);
+    selectedCard.classList.remove('flipped'); // めくる
+
+    setTimeout(() => {
+      // 全カードをオープン
+      for (let i = 0; i < totalCards; i++) {
+        document.getElementById(`card-${i}`).classList.remove('flipped');
+      }
+
+      const msg = document.getElementById('message');
+      if (cardsData[selectedIndex] === '⭐レア') {
+        msg.innerText = '🎉 おめでとう！引き当てたよ！';
+        msg.style.color = '#f1c40f';
+        selectedCard.querySelector('.card-front').classList.add('win-card');
+        createConfetti();
+      } else {
+        msg.innerText = '😭 残念！ハズレ…！';
+        msg.style.color = '#e74c3c';
+      }
+
+      document.getElementById('action-btn').style.display = 'inline-block';
+      document.getElementById('action-btn').innerText = 'もう一度あそぶ';
+      document.getElementById('action-btn').onclick = initBoard;
+      isAnimating = false;
+    }, 500);
+  }
+
+  function createConfetti() {
+    for (let i = 0; i < 30; i++) {
+      const confetti = document.createElement('div');
+      confetti.className = 'confetti';
+      confetti.style.left = Math.random() * 100 + 'vw';
+      confetti.style.backgroundColor = ['#f1c40f', '#e74c3c', '#2ecc71', '#3498db'][Math.floor(Math.random() * 4)];
+      confetti.style.animationDuration = (Math.random() * 2 + 1) + 's';
+      document.body.appendChild(confetti);
+      setTimeout(() => confetti.remove(), 2000);
     }
-    document.getElementById('action-btn').style.display = 'inline-block';
-    document.getElementById('action-btn').innerText = 'もう一度あそぶ';
-    document.getElementById('action-btn').onclick = initBoard;
   }
 
   initBoard();
